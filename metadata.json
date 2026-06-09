@@ -1,0 +1,6 @@
+{
+  "name": "SPMB SMAN 1 Wamena",
+  "description": "Sistem Penerimaan Murid Baru 2026 - Cek Kelulusan dengan cepat via Google Sheets",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
