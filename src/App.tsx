@@ -13,7 +13,7 @@ export default function App() {
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
     if (!participantCode.trim()) {
-      setError('Silakan masukkan nomor formulir Anda.');
+      setError('Silakan masukkan nomor tes Anda.');
       return;
     }
 
@@ -112,10 +112,23 @@ export default function App() {
   const renderResultData = () => {
     if (!result || result.notFound) return null;
 
-    const displayData = Object.entries(result).filter(([key, value]) => {
-      const lowerKey = key.toLowerCase();
-      return key.trim() !== '' && value && !lowerKey.includes('status') && !lowerKey.includes('keterangan') && !lowerKey.includes('kelulusan');
-    });
+    const displayData = Object.entries(result)
+      .filter(([key, value]) => {
+        const lowerKey = key.toLowerCase();
+        return key.trim() !== '' && value && 
+          !lowerKey.includes('status') && 
+          !lowerKey.includes('keterangan') && 
+          !lowerKey.includes('kelulusan') &&
+          !lowerKey.includes('pesan');
+      })
+      .map(([key, value]) => {
+        let displayKey = key;
+        const lowerKey = key.toLowerCase();
+        if (lowerKey.includes('nomor formulir') || lowerKey === 'nomor_formulir') {
+          displayKey = 'Nomor Tes';
+        }
+        return [displayKey, value];
+      });
     
     // Find status value flexibly
     const statusKey = Object.keys(result).find(k => {
@@ -378,7 +391,7 @@ export default function App() {
                       value={participantCode}
                       onChange={(e) => setParticipantCode(e.target.value)}
                       className="block w-full pl-12 sm:pl-14 pr-28 sm:pr-36 py-4 sm:py-5 bg-white/90 backdrop-blur-sm border-2 border-white rounded-2xl sm:rounded-3xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-base sm:text-lg shadow-xl font-medium"
-                      placeholder="Contoh: 2026001"
+                      placeholder="Masukan nomor tes anda"
                     />
                     <div className="absolute inset-y-1.5 sm:inset-y-2 right-1.5 sm:right-2">
                       <button
