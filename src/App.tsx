@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Search, GraduationCap, Building, Loader2, CheckCircle, XCircle, AlertTriangle, ArrowLeft, Send, MessageSquare } from 'lucide-react';
+import { useState, useEffect, FormEvent } from 'react';
+import { Search, GraduationCap, Building, Loader2, CheckCircle, XCircle, AlertTriangle, ArrowLeft, Send, MessageSquare, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 
@@ -23,12 +23,18 @@ export default function App() {
     const fetchMessages = async () => {
       try {
         const res = await fetch('/api/messages');
-        const data = await res.json();
-        if (data.success && data.data) {
-          setPublicMessages(data.data);
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await res.json();
+          if (data.success && data.data) {
+            setPublicMessages(data.data);
+          }
         }
       } catch (err) {
-        console.error(err);
+        console.error('Failed to fetch messages:', err);
       }
     };
     fetchMessages();
@@ -36,7 +42,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleSearch = async (e: React.FormEvent) => {
+  const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
     if (!participantCode.trim()) {
       setError('Silakan masukkan nomor formulir Anda.');
@@ -57,6 +63,15 @@ export default function App() {
         new Promise(resolve => setTimeout(resolve, 1500))
       ]);
       
+      if (!response.ok) {
+        throw new Error(`Terjadi kesalahan server (${response.status})`);
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Respons server tidak sesuai (bukan JSON).");
+      }
+
       const data = await response.json();
 
       if (response.ok) {
@@ -70,6 +85,17 @@ export default function App() {
           
           if (isLulus(statusValue) && !isTidakLulus(statusValue)) {
             triggerConfetti();
+          }
+
+          // Check if there is already a message
+          const msgKey = Object.keys(data.data).find(k => k.toLowerCase() === 'pesan');
+          const existingMsg = msgKey ? data.data[msgKey] : '';
+          if (existingMsg && String(existingMsg).trim() !== '') {
+            setMessage(String(existingMsg));
+            setMessageSent(true);
+          } else {
+            setMessage('');
+            setMessageSent(false);
           }
         } else {
           setResult({ notFound: true });
@@ -122,7 +148,7 @@ export default function App() {
     }, 250);
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
     if (!message.trim()) {
       setMessageError('Pesan tidak boleh kosong.');
@@ -146,11 +172,15 @@ export default function App() {
         }),
       });
 
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Gagal mengirim pesan. Coba lagi.");
+      }
+
       const data = await response.json();
 
       if (response.ok) {
         setMessageSent(true);
-        setMessage('');
       } else {
         setMessageError(data.error || 'Gagal mengirim pesan.');
       }
@@ -179,10 +209,21 @@ export default function App() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="flex flex-col items-center justify-center p-4 bg-green-50 rounded-2xl border border-green-100 mb-6"
+            className="flex flex-col p-5 bg-blue-50/50 rounded-2xl border border-blue-100 relative group"
           >
-            <CheckCircle className="w-8 h-8 text-green-500 mb-2" />
-            <p className="text-green-800 font-medium text-sm">Terima kasih, pesan Anda berhasil dikirim!</p>
+            <div className="flex items-center space-x-2 text-blue-800 mb-2">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+              <span className="font-semibold text-sm">Pesan Anda:</span>
+            </div>
+            <p className="text-gray-700 text-sm whitespace-pre-wrap pl-7">{message}</p>
+            <button 
+                onClick={() => setMessageSent(false)} 
+                type="button"
+                className="absolute top-4 right-4 text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center space-x-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity bg-blue-100/50 hover:bg-blue-100 px-3 py-1.5 rounded-lg"
+            >
+                <Edit2 className="w-4 h-4" />
+                <span>Edit</span>
+            </button>
           </motion.div>
         ) : (
           <form onSubmit={handleSendMessage} className="space-y-3 mb-6">
@@ -426,33 +467,21 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 relative flex flex-col font-sans overflow-hidden">
+    <div className="min-h-screen bg-slate-50 relative flex flex-col font-sans overflow-hidden">
       {/* Background Decor */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-violet-400/20 to-fuchsia-400/20 blur-[120px] mix-blend-multiply"></div>
-        <div className="absolute top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-gradient-to-bl from-cyan-400/20 to-blue-400/20 blur-[120px] mix-blend-multiply"></div>
-        <div className="absolute -bottom-[20%] left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-tr from-pink-400/20 to-rose-400/20 blur-[120px] mix-blend-multiply"></div>
+        <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-slate-200/50 blur-[120px] mix-blend-multiply"></div>
+        <div className="absolute top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-zinc-200/50 blur-[120px] mix-blend-multiply"></div>
+        <div className="absolute -bottom-[20%] left-[10%] w-[60%] h-[60%] rounded-full bg-gray-200/40 blur-[120px] mix-blend-multiply"></div>
       </div>
 
-      <nav className="w-full bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-3 select-none">
-            <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 overflow-hidden shrink-0">
-              <img src="https://www.dbl.id/uploads/school/30893/560-SMAN_1_WAMENA.png" alt="Logo SMAN 1 Wamena" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-            </div>
-            <div className="flex flex-col justify-center">
-              <div className="flex items-baseline">
-                <h1 className="text-base sm:text-[22px] font-medium text-gray-700 tracking-tight leading-none">
-                  SMA Negeri 1 Wamena
-                </h1>
-                <span className="hidden sm:inline-block ml-1.5 text-sm sm:text-lg font-normal text-gray-500 leading-none">
-                  SPMB 2026
-                </span>
-              </div>
+        <div className="w-full bg-amber-50 border-b border-amber-200 py-2 top-0 z-20 sticky">
+          <div className="marquee-container">
+            <div className="marquee-content text-amber-800 text-sm font-bold tracking-wider uppercase">
+              PENGUMUMAN PENTING: Keputusan kelulusan ini adalah final dan tidak dapat diganggu gugat.
             </div>
           </div>
         </div>
-      </nav>
 
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-4 sm:py-6 relative z-0">
         <div className="w-full max-w-2xl">
@@ -475,13 +504,13 @@ export default function App() {
                     <img src="https://www.dbl.id/uploads/school/30893/560-SMAN_1_WAMENA.png" alt="Logo SMAN 1 Wamena" className="w-full h-full object-contain drop-shadow-sm" referrerPolicy="no-referrer" />
                   </motion.div>
                   <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-gray-900 mb-3 sm:mb-4 tracking-tight drop-shadow-sm px-2">
-                    Sistem Pengumuman<br />
+                    Sistem Informasi<br />
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
                       Penerimaan Murid Baru
                     </span>
                   </h2>
                   <p className="text-sm sm:text-base md:text-lg text-gray-600 max-w-lg mx-auto font-medium px-4">
-                    Masukkan nomor pendaftaran Anda untuk mengecek status kelulusan SPMB Tahun Ajaran 2026.
+                    Situs ini merupakan laman resmi untuk Sistem Penerimaan Murid Baru (SPMB) SMA NEGERI 1 WAMENA Tahun Ajaran 2026 / 2027.
                   </p>
                 </div>
 

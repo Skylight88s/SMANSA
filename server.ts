@@ -1,12 +1,14 @@
 import express from 'express';
+import compression from 'compression';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import Papa from 'papaparse';
+import 'dotenv/config';
 
 // In-memory cache to handle high-speed requests
 let sheetDataCache: any[] = [];
 let lastFetchTime = 0;
-const CACHE_TTL_MS = 1000 * 60 * 5; // 5 minutes cache
+const CACHE_TTL_MS = 0; // Disable server cache to fetch fresh data every time (Google Sheets still has a 5-min delay)
 
 async function fetchAndParseCSV(url: string): Promise<any[]> {
   try {
@@ -74,7 +76,10 @@ async function getSheetData(): Promise<any[]> {
       console.warn("GOOGLE_SHEET_CSV_URL is not configured.");
       return [];
     }
-    sheetDataCache = await fetchAndParseCSV(csvUrl);
+    
+    // Add cache buster to bypass browser/intermediate network caches
+    const fetchUrl = csvUrl.includes('?') ? `${csvUrl}&_t=${now}` : `${csvUrl}?_t=${now}`;
+    sheetDataCache = await fetchAndParseCSV(fetchUrl);
     lastFetchTime = now;
   }
   return sheetDataCache;
@@ -84,6 +89,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Add response compression
+  app.use(compression());
+
   app.use(express.json());
 
   // API endpoints FIRST
@@ -91,60 +99,82 @@ async function startServer() {
   let messages: any[] = [];
 
   app.post('/api/message', async (req, res) => {
-    const { nomor, nama, pesan } = req.body;
-    if (!pesan) {
-      return res.status(400).json({ error: 'Pesan tidak boleh kosong' });
-    }
-    
-    // Validasi 1 Nomor = 1 Komentar
-    const existing = messages.find(m => m.nomor === nomor);
-    if (existing) {
-      return res.status(400).json({ error: 'Nomor pendaftaran ini sudah mengirimkan pesan.' });
-    }
-
-    const newMessage = { nomor, nama, pesan, timestamp: new Date() };
-    messages.push(newMessage);
-
-    // Optional: Send to Google Apps Script Webhook to write to Sheet2
-    const webhookUrl = process.env.GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
-    if (webhookUrl) {
-      try {
-        await fetch(webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newMessage)
-        });
-      } catch (err) {
-        console.error("Failed to sync to Google Sheets:", err);
+    try {
+      const { nomor, nama, pesan } = req.body;
+      if (!pesan) {
+        return res.status(400).json({ error: 'Pesan tidak boleh kosong' });
       }
-    }
+      
+      const newMessage = { nomor, nama, pesan, timestamp: new Date() };
+      
+      // Allow overriding existing local message
+      const existingMemIndex = messages.findIndex(m => m.nomor === nomor);
+      if (existingMemIndex >= 0) {
+        messages[existingMemIndex] = newMessage;
+      } else {
+        messages.push(newMessage);
+      }
 
-    res.json({ success: true, message: 'Pesan berhasil dikirim' });
+      // Send to Google Apps Script Webhook
+      const webhookUrl = process.env.GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
+      if (webhookUrl) {
+        try {
+          const response = await fetch(webhookUrl, {
+            method: 'POST',
+            redirect: 'follow', // Make sure fetch follows Google's 302 redirect
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(newMessage)
+          });
+          if (!response.ok) {
+            console.warn(`[Google Sheets Webhook] Gagal (Status: ${response.status}). Pastikan "Who has access" Web App disetel menjadi 'Anyone'.`);
+          } else {
+            console.log("[Google Sheets Webhook] Pesan berhasil dikirim ke spreadsheet.");
+          }
+        } catch (err) {
+          console.error("[Google Sheets Webhook] Network error:", err);
+        }
+      }
+
+      res.json({ success: true, message: 'Pesan berhasil dikirim' });
+    } catch (error) {
+      console.error('Error handling message submission:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
-  let messagesCache: any[] = [];
-  let lastMessagesFetchTime = 0;
-
   app.get('/api/messages', async (req, res) => {
-    // If Admin configures Sheet2 CSV URL, we pull from there so if they delete a row, it syncs
-    const sheetsCsvUrl = process.env.GOOGLE_SHEET_MESSAGES_CSV_URL;
-    
-    if (sheetsCsvUrl) {
-      const now = Date.now();
-      if (messagesCache.length === 0 || now - lastMessagesFetchTime > CACHE_TTL_MS) {
-        messagesCache = await fetchAndParseCSV(sheetsCsvUrl);
-        lastMessagesFetchTime = now;
+    try {
+      // Read from the main sheet
+      const data = await getSheetData();
+      
+      const sheetMessages = data
+        .filter(row => (row['Pesan'] || row['pesan']) && String(row['Pesan'] || row['pesan']).trim() !== '')
+        .map(row => ({
+          nomor: row['Nomor Formulir'] || row['nomor'] || (Object.values(row)[0] as string) || '',
+          nama: row['Nama'] || row['nama'] || '',
+          pesan: row['Pesan'] || row['pesan'] || ''
+        }));
+
+      // Local in-memory messages (those just submitted and not yet in the sheet)
+      // Keep only messages from the last 5 minutes to avoid showing deleted messages forever
+      const now = new Date().getTime();
+      messages = messages.filter(m => now - m.timestamp.getTime() < 5 * 60 * 1000);
+
+      const activeMessages = [...sheetMessages];
+
+      for (const msg of messages) {
+         const inSheet = sheetMessages.find(sm => sm.nomor === msg.nomor);
+         if (!inSheet) {
+            activeMessages.push(msg);
+         }
       }
-      // Re-populate inner state from sheet just in case
-      messages = messagesCache.map(row => ({
-        nomor: row['Nomor Formulir'] || row['nomor'] || row[Object.keys(row)[0]],
-        nama: row['Nama'] || row['nama'] || '',
-        pesan: row['Pesan'] || row['pesan'] || ''
-      })).filter(m => m.pesan);
+      
+      // Return latest messages
+      res.json({ success: true, data: activeMessages.slice(-20).reverse() });
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      res.status(500).json({ success: false, error: 'Internal server error' });
     }
-    
-    // Return latest 20 messages
-    res.json({ success: true, data: messages.slice(-20).reverse() });
   });
 
   app.get('/api/check-status', async (req, res) => {
@@ -174,6 +204,15 @@ async function startServer() {
       });
 
       if (result) {
+        // Find if we have a MORE RECENT message in local memory for this participant
+        const localMsg = messages.find(m => m.nomor === participantCode);
+        if (localMsg) {
+          // Find the precise column name for "Pesan" to update it
+          const keys = Object.keys(result);
+          const pesanKey = keys.find(k => k.toLowerCase() === 'pesan') || 'Pesan';
+          result[pesanKey] = localMsg.pesan;
+        }
+
         return res.json({ found: true, data: result });
       }
 
