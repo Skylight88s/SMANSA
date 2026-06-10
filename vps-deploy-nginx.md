@@ -20,6 +20,17 @@ Perintah ini akan membuat folder `dist/` yang berisikan aset website yang sudah 
 
 Kirim semua file project Anda ke VPS (kecuali `node_modules`).
 
+## Langkah 2.5: Mengatur Environment Variables (PENTING)
+Di VPS, Anda harus membuat file `.env` di dalam root direktori project, karena file ini digunakan untuk menghubungkan webhook ke Google Sheets.
+Buat file dengan nama `.env` dan isikan dengan baris berikut (sesuaikan dengan URL Webhook milik Anda):
+
+```env
+GOOGLE_APPS_SCRIPT_WEBHOOK_URL="https://script.google.com/macros/s/AKfycbyqY7THs2i7Qq6cQ8D0DR_enhcXqP-kpuD8f4x6SZNlxM6EdykS_oafnCYA9z3BVBZcdQ/exec"
+```
+*(Ganti URL di atas dengan URL Apps Script Anda jika berbeda)*
+
+Bila tidak ada file `.env` ini, fitur kirim pesan tidak akan berfungsi di VPS karena aplikasi tidak mengetahui URL webhook tujuan.
+
 ## Langkah 3: Menjalankan Server Node.js di VPS
 Di terminal VPS, masuk ke folder project Anda, lalu jalankan:
 

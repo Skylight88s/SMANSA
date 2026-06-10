@@ -10,38 +10,6 @@ export default function App() {
   const [error, setError] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
 
-  // Message State
-  const [message, setMessage] = useState('');
-  const [sendingMessage, setSendingMessage] = useState(false);
-  const [messageSent, setMessageSent] = useState(false);
-  const [messageError, setMessageError] = useState('');
-
-  const [publicMessages, setPublicMessages] = useState<any[]>([]);
-  const [showMessages, setShowMessages] = useState(true);
-
-  useEffect(() => {
-    const fetchMessages = async () => {
-      try {
-        const res = await fetch('/api/messages');
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-          const data = await res.json();
-          if (data.success && data.data) {
-            setPublicMessages(data.data);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch messages:', err);
-      }
-    };
-    fetchMessages();
-    const interval = setInterval(fetchMessages, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
     if (!participantCode.trim()) {
@@ -52,9 +20,6 @@ export default function App() {
     setLoading(true);
     setError('');
     setResult(null);
-    setMessage('');
-    setMessageSent(false);
-    setMessageError('');
 
     try {
       // Add a slight artificial delay for the elegant loading animation
@@ -85,17 +50,6 @@ export default function App() {
           
           if (isLulus(statusValue) && !isTidakLulus(statusValue)) {
             triggerConfetti();
-          }
-
-          // Check if there is already a message
-          const msgKey = Object.keys(data.data).find(k => k.toLowerCase() === 'pesan');
-          const existingMsg = msgKey ? data.data[msgKey] : '';
-          if (existingMsg && String(existingMsg).trim() !== '') {
-            setMessage(String(existingMsg));
-            setMessageSent(true);
-          } else {
-            setMessage('');
-            setMessageSent(false);
           }
         } else {
           setResult({ notFound: true });
@@ -148,109 +102,12 @@ export default function App() {
     }, 250);
   };
 
-  const handleSendMessage = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!message.trim()) {
-      setMessageError('Pesan tidak boleh kosong.');
-      return;
-    }
-
-    setSendingMessage(true);
-    setMessageError('');
-
-    try {
-      const namaKey = result ? Object.keys(result).find(k => k.toLowerCase().includes('nama')) : null;
-      const nama = namaKey ? result[namaKey] : 'Anonim';
-      
-      const response = await fetch('/api/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nomor: participantCode,
-          nama: nama,
-          pesan: message
-        }),
-      });
-
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Gagal mengirim pesan. Coba lagi.");
-      }
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setMessageSent(true);
-      } else {
-        setMessageError(data.error || 'Gagal mengirim pesan.');
-      }
-    } catch (err) {
-      setMessageError('Terjadi kesalahan jaringan.');
-    } finally {
-      setSendingMessage(false);
-    }
-  };
-
   const handleReset = () => {
     setHasSearched(false);
     setResult(null);
     setParticipantCode('');
-    setMessage('');
-    setMessageSent(false);
-    setMessageError('');
   };
 
-  const renderMessageForm = () => {
-    return (
-      <div className="mt-6 border-t border-gray-100 pt-6">
-        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Tinggalkan Pesan (Opsional)</h4>
-        
-        {messageSent ? (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="flex flex-col p-5 bg-blue-50/50 rounded-2xl border border-blue-100 relative group"
-          >
-            <div className="flex items-center space-x-2 text-blue-800 mb-2">
-              <CheckCircle className="w-5 h-5 text-green-500" />
-              <span className="font-semibold text-sm">Pesan Anda:</span>
-            </div>
-            <p className="text-gray-700 text-sm whitespace-pre-wrap pl-7">{message}</p>
-            <button 
-                onClick={() => setMessageSent(false)} 
-                type="button"
-                className="absolute top-4 right-4 text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center space-x-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity bg-blue-100/50 hover:bg-blue-100 px-3 py-1.5 rounded-lg"
-            >
-                <Edit2 className="w-4 h-4" />
-                <span>Edit</span>
-            </button>
-          </motion.div>
-        ) : (
-          <form onSubmit={handleSendMessage} className="space-y-3 mb-6">
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Tulis pesan (kesan, pertanyaan, atau tanggapan) Anda di sini..."
-              className="w-full p-4 bg-gray-50/50 border border-gray-200 rounded-2xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none min-h-[100px]"
-            />
-            {messageError && (
-              <p className="text-xs text-red-500 font-medium">{messageError}</p>
-            )}
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={sendingMessage || !message.trim()}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl text-sm transition-all shadow-sm"
-              >
-                {sendingMessage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                Kirim Pesan
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    );
-  };
 
   const renderResultData = () => {
     if (!result || result.notFound) return null;
@@ -341,7 +198,6 @@ export default function App() {
                 ))}
               </div>
               
-              {renderMessageForm()}
             </motion.div>
 
             <motion.button 
@@ -455,8 +311,6 @@ export default function App() {
           ))}
         </div>
         
-        {renderMessageForm()}
-        
         <div className="text-center">
           <button onClick={handleReset} className="text-blue-600 font-medium hover:underline">
             ← Cek Nomor Lain
@@ -545,71 +399,8 @@ export default function App() {
                     </motion.p>
                   )}
                 </form>
-
-                {publicMessages.length > 0 && (
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.3 }}
-                    className="mt-12 w-full mx-auto"
-                  >
-                    <div className="flex justify-center mb-4">
-                      <button 
-                        onClick={(e) => { e.preventDefault(); setShowMessages(!showMessages); }}
-                        className="group relative inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 hover:from-blue-500/20 hover:to-indigo-500/20 text-blue-700 font-bold text-xs uppercase tracking-widest rounded-full transition-all border border-blue-200 shadow-sm"
-                      >
-                        <span className="relative flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"></span>
-                        </span>
-                        Live: Pesan Masuk
-                        <svg className={`w-4 h-4 text-blue-500 transition-transform ${showMessages ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
-                    </div>
-                    
-                    <AnimatePresence>
-                      {showMessages && (
-                        <motion.div 
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="relative overflow-hidden h-[160px] w-full max-w-lg mx-auto rounded-2xl bg-white/40 backdrop-blur-sm border border-white/60 p-4 shadow-sm"
-                        >
-                          <div className="absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-white/40 to-transparent z-10 pointer-events-none"></div>
-                          <div className="absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-white/40 to-transparent z-10 pointer-events-none"></div>
-                          
-                          <div className="flex flex-col gap-3 overflow-y-auto h-full scrollbar-hide pr-2">
-                            <AnimatePresence>
-                              {publicMessages.slice(0, 3).map((msg, i) => (
-                                <motion.div
-                                  key={i}
-                              initial={{ opacity: 0, y: 20 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="bg-white/80 p-3 rounded-xl shadow-sm border border-gray-100 flex gap-3 items-start"
-                            >
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shrink-0 text-white font-bold shadow-sm">
-                                {msg.nama?.charAt(0).toUpperCase() || '?'}
-                              </div>
-                              <div className="flex-1 min-w-0 text-left">
-                                <div className="flex justify-between items-baseline mb-0.5">
-                                  <h5 className="font-bold text-gray-800 text-xs truncate mr-2">{msg.nama}</h5>
-                                  <span className="text-[10px] text-gray-400 font-medium shrink-0">#{msg.nomor}</span>
-                                </div>
-                                <p className="text-gray-600 text-xs font-medium leading-relaxed break-words">{msg.pesan}</p>
-                              </div>
-                            </motion.div>
-                          ))}
-                        </AnimatePresence>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </motion.div>
             )}
-          </motion.div>
-        )}
 
             {loading && (
               <motion.div 
